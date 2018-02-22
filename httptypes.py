@@ -77,10 +77,10 @@ class HttpRequest(object):
 
         # Home page
         if self.resource == b'/':
-            self.resource = b'index.html'
+            self.resource = b'/index.html'
 
         # The resource is placed in ROOT directory
-        self.resource = path.join(ROOT_DIR, self.resource)
+        self.resource = ROOT_DIR + self.resource
 
         if self.method == b'POST':
             length_regex = re.compile(b'Content-Length:(.+)\r\n')
@@ -192,8 +192,8 @@ class HttpResponse(object):
                 decode('utf-8')
             self.content_type = HttpResponse.content_types[resource_extension]
             self.content_length = path.getsize(http_request.resource)
-            with open(http_request.resource, 'r') as resource_data:
-                self.data = resource_data.read().encode('utf-8')
+            with open(http_request.resource, 'rb') as resource_data:
+                self.data = resource_data.read()
 
     def __repr__(self):
         # First response line
@@ -305,17 +305,8 @@ class HttpServer(object):
         received_data = connection.recv(DEFAULT_BUFFER_SIZE)
         while received_data:
             request = HttpRequest(received_data)
+            print(request.__repr__())
             response = request.create_response(self.forbidden_resources)
             # Send the response
             response.send(connection)
             received_data = connection.recv(DEFAULT_BUFFER_SIZE)
-
-
-def main():
-    server = HttpServer('127.0.0.1', 1226)
-    server.start()
-
-
-if __name__ == '__main__':
-    main()
-
