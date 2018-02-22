@@ -5,7 +5,9 @@ Overview: This code contains a few types that will be used on working
           conveniently with the HTTP protocol.
 
 """
+
 import re
+import socket
 from os import path
 
 # constants
@@ -51,6 +53,7 @@ DEFAULT_ERRORS = {
 </html>
 """
 }
+DEFAULT_BUFFER_SIZE = 1024
 
 
 class HttpRequest(object):
@@ -103,22 +106,22 @@ class HttpRequest(object):
             self.content_length = int(content_length)
 
     def __repr__(self):
-        return b' '.join((self.method, self.resource, self.version))
+        request =  b' '.join((self.method, self.resource, self.version))
+        return request.decode('utf-8')
 
-    def __str__(self):
+    def __bytes__(self):
         first_line = '{} {} {}'.format(self.method, self.resource, self.version)
         request = first_line + '\r\n'
-        if self.method == 'POST':
+        if self.method == b'POST':
             # add headers
-            request += 'Content-Length: {}\r\n'.format(self.content_length)
-            request += 'Content-Type: {}\r\n'.format(self.content_type)
-            request += '\r\n'
+            request += b'Content-Length: ' + \
+                       bytes(str(self.content_length), encoding='utf-8') + \
+                       b'\r\n'
+            request += b'Content-Type: ' + self.content_type + b'\r\n'
+            request += b'\r\n'
             # add data
             request += self.data
         return request
-
-    def __bytes__(self):
-        return bytes(self.__str__())
 
 
 class HttpResponse(object):
@@ -183,11 +186,14 @@ class HttpResponse(object):
 
     def __repr__(self):
         # First response line
-        return '{} {} {}'.format(self.version, self.code,
-                                 HttpResponse.code_phrases[self.code])
+        response = b' '.join((self.version,
+                              bytes(str(self.code), encoding='utf-8'),
+                              self.code_phrase))
+        return response.decode('utf-8')
 
-    def __str__(self):
-        first_line = self.version + self.code + self.code_phrase + b'\r\n'
+    def __bytes__(self):
+        first_line = self.version + bytes(str(self.code), encoding='utf-8') + \
+                     self.code_phrase + b'\r\n'
         response = first_line + b'\r\n'
         # Add header fields
         response += b'Content-Length: ' + self.content_length + b'\r\n'
@@ -225,12 +231,39 @@ class HttpResponse(object):
             return 404  # Not Found
 
 
-def main():
-    req = b'POST / HTTP/1.1\r\nContent-Type: text/plain\r\n\r\nmymydatadata'
-    request = HttpRequest(req)
-    response = HttpResponse(request)
-    print(response.data)
+class HttpServer(object):
+    """
+    This class represents an http server
+    """
+    def __init__(self, ip, port, verbose=True, forbidden_resources=None):
+        """
+        HttpServer constructor
+        :param ip: ip address that the server will be bind in
+        :param port: specific port that the server will be bind in
+        :param verbose: whether should pring debug messages or not
+        :param forbidden_resources: All the resources that the user is NOT
+        supposed to have access to.
+        """
+        self.ip = ip
+        self.port = port
+        self.verbose = verbose
+        self.forbidden_resources = None
 
+    def start(self):
+        """
+        Starts the server
+        :return:
+        TODO: Add Debug messages
+        """
+        # Create a tcp socket
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind((self.ip, self.port))
+        server_socket.listen(1)
 
-if __name__ == '__main__':
-    main()
+        # Wait for connection
+        connection, client_addr = server_socket.accept()
+
+        # Start receiving requests
+        received_data = connection.recv(DEFAULT_BUFFER_SIZE)
+        request = HttpRequest(received_data)
+        
