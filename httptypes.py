@@ -10,7 +10,19 @@ from os import path
 
 # constants
 ROOT_DIR = 'webroot'
-
+DEFAULT_FILE_NOT_FOUND_MESSAGE = """
+<html>
+    <head>
+    <title>File Not Found </title>
+    </head>
+    <body>
+        <h1 style="text-align: center">File Not Found!</h1> 
+        <p style="text-align: center">
+        The requested file was not found.
+        </p>
+    </body>
+</html>
+"""
 
 class HttpRequest(object):
     """
@@ -74,6 +86,24 @@ class HttpResponse(object):
         404: 'Not Found',
     }
 
+    content_types = {
+        # Image
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+
+        # Text
+        '.css': 'text/css',
+        '.html': 'text/html',
+        '.txt': 'text/plain',
+
+        # Application
+        '.pdf': 'application/pdf',
+        '.json': 'application/json',
+        '.js': 'application/javascript',
+    }
+
     def __init__(self, http_request, forbidden_resources=None):
         """
         This ctor forms an Http Response object using the http request
@@ -81,10 +111,14 @@ class HttpResponse(object):
         :type http_request: HttpRequest
         :param forbidden_resources: Resources that the user is not supposed
             to have access to.
+        TODO: Make it work better with big files
         """
         self.code = HttpResponse.__get_code(http_request, forbidden_resources)
         self.code_phrase = HttpResponse.code_phrases[self.code]
         self.version = http_request.version
+        if self.code == 404:
+            self.resource =
+        resource_extension = self.resource.extension
 
     @staticmethod
     def __get_code(http_request, forbidden_resources=None):
@@ -114,6 +148,4 @@ class HttpResponse(object):
         else:
             # in case requested resource does not exist
             return 404  # Not Found
-
-
 
