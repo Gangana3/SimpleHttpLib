@@ -16,7 +16,7 @@ DEFAULT_ERRORS = {
     400: b"""
     <html>
     <head>
-    <title>Bad Request </title>
+    <title>400 Bad Request </title>
     </head>
     <body>
         <h1 style="text-align: center">Bad Request 400</h1> 
@@ -29,7 +29,7 @@ DEFAULT_ERRORS = {
     403: b"""
     <html>
     <head>
-    <title>Forbidden </title>
+    <title>403 Forbidden </title>
     </head>
     <body>
         <h1 style="text-align: center">Forbidden 403</h1> 
@@ -42,7 +42,7 @@ DEFAULT_ERRORS = {
     404: b"""
 <html>
     <head>
-    <title>File Not Found </title>
+    <title>404 Not Found </title>
     </head>
     <body>
         <h1 style="text-align: center">File Not Found! 404</h1> 
@@ -106,7 +106,7 @@ class HttpRequest(object):
             self.content_length = int(content_length)
 
     def __repr__(self):
-        request =  b' '.join((self.method, self.resource, self.version))
+        request = b' '.join((self.method, self.resource, self.version))
         return request.decode('utf-8')
 
     def __bytes__(self):
@@ -122,6 +122,16 @@ class HttpRequest(object):
             # add data
             request += self.data
         return request
+
+    def create_response(self, forbidden_resources=None):
+        """
+        Creates a response for the request
+        :param forbidden_resources: Resources that the user is not supposed
+            to have access to.
+        :rtype: HttpResponse
+        :return: A response to the request
+        """
+        return HttpResponse(self, forbidden_resources)
 
 
 class HttpResponse(object):
@@ -178,11 +188,12 @@ class HttpResponse(object):
 
         # Take care of a valid request
         if self.code == 200:
-            resource_extension = path.splitext(http_request.resource)[1]
+            resource_extension = path.splitext(http_request.resource)[1].\
+                decode('utf-8')
             self.content_type = HttpResponse.content_types[resource_extension]
             self.content_length = path.getsize(http_request.resource)
             with open(http_request.resource, 'r') as resource_data:
-                self.data = resource_data.read()
+                self.data = resource_data.read().encode('utf-8')
 
     def __repr__(self):
         # First response line
@@ -192,14 +203,24 @@ class HttpResponse(object):
         return response.decode('utf-8')
 
     def __bytes__(self):
-        first_line = self.version + bytes(str(self.code), encoding='utf-8') + \
-                     self.code_phrase + b'\r\n'
+        first_line = b' '.join((self.version, str(self.code).encode('utf-8'),
+                                self.code_phrase))
         response = first_line + b'\r\n'
         # Add header fields
-        response += b'Content-Length: ' + self.content_length + b'\r\n'
+        response += b'Content-Length: ' + \
+                    bytes(str(self.content_length), encoding='utf-8') + b'\r\n'
         response += b'Content-Type: ' + self.content_type + b'\r\n'
         # Add data
-        response += '\r\n{}'.format(self.data)
+        response += b'\r\n' + self.data
+        return response
+
+    def send(self, connection_socket):
+        """
+        Sends the response through the connection socket
+        :param connection_socket:
+        :return: None
+        """
+        connection_socket.send(bytes(self))
 
     @staticmethod
     def __get_code(http_request, forbidden_resources=None):
@@ -247,7 +268,7 @@ class HttpServer(object):
         self.ip = ip
         self.port = port
         self.verbose = verbose
-        self.forbidden_resources = None
+        self.forbidden_resources = forbidden_resources
 
     def start(self):
         """
@@ -260,10 +281,41 @@ class HttpServer(object):
         server_socket.bind((self.ip, self.port))
         server_socket.listen(1)
 
-        # Wait for connection
-        connection, client_addr = server_socket.accept()
+        try:
+            while True:
+                # Wait for connection
+                connection, client_addr = server_socket.accept()
 
+                try:
+                    self.__serve_client(connection)
+                finally:
+                    connection.close()
+        finally:
+            server_socket.close()   # shutdown server
+
+    def __serve_client(self, connection):
+        """
+        This method serves ONE client for what he needs
+        :param connection: connection object
+        :type connection: socket.socket
+        :return: None
+        TODO: Add debug messages
+        """
         # Start receiving requests
         received_data = connection.recv(DEFAULT_BUFFER_SIZE)
-        request = HttpRequest(received_data)
-        
+        while received_data:
+            request = HttpRequest(received_data)
+            response = request.create_response(self.forbidden_resources)
+            # Send the response
+            response.send(connection)
+            received_data = connection.recv(DEFAULT_BUFFER_SIZE)
+
+
+def main():
+    server = HttpServer('127.0.0.1', 1226)
+    server.start()
+
+
+if __name__ == '__main__':
+    main()
+
