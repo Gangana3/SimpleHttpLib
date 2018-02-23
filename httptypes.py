@@ -245,14 +245,18 @@ class HttpResponse(object):
         :param connection_socket:
         :return: None
         """
-        if not self._is_big_response:
-            # For small files
-            connection_socket.send(bytes(self))
-        else:
-            # For big files
-            connection_socket.send(bytes(self))
-            for part in self.data:
-                connection_socket.send(part)
+        try:
+            if not self._is_big_response:
+                # For small files
+                connection_socket.send(bytes(self))
+            else:
+                # For big files
+                connection_socket.send(bytes(self))
+                for part in self.data:
+                    connection_socket.send(part)
+        except BrokenPipeError:
+            # in case given connection is closed
+            pass
 
     @staticmethod
     def __iter_resource_data(filename):
@@ -397,12 +401,3 @@ ___________________________________________________""".format(
             received_data = connection.recv(DEFAULT_BUFFER_SIZE)
             # If the received_data is an empty string, it means that the client
             # disconnected
-
-
-def main():
-    server = HttpServer('127.0.0.1', 1235)
-    server.start()
-
-
-if __name__ == '__main__':
-    main()
