@@ -276,7 +276,6 @@ class HttpServer(object):
         """
         Starts the server
         :return:
-        TODO: Add Debug messages
         """
         # Create a tcp socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -332,7 +331,6 @@ class HttpServer(object):
         :param connection: connection object
         :type connection: socket.socket
         :return: None
-        TODO: Add debug messages
         """
         # Start receiving requests
         received_data = connection.recv(DEFAULT_BUFFER_SIZE)
