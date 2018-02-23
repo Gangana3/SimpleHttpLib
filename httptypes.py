@@ -224,6 +224,7 @@ class HttpResponse(object):
         :param connection_socket:
         :return: None
         """
+        print(bytes(self))
         connection_socket.send(bytes(self))
 
     @staticmethod
@@ -234,7 +235,7 @@ class HttpResponse(object):
         :type http_request: HttpRequest
         :return: matching status code for the given request
         """
-        if path.exists(http_request.resource):
+        if path.isfile(http_request.resource):
             # in case requested resource exists
             # Check if resource path is harmful or not
             if b'..' in http_request.resource:
