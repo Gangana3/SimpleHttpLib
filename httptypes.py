@@ -62,10 +62,12 @@ class HttpRequest(object):
     This class represents an HTTP request
 
     TODO: Make it work better with post requests containing big data
-    TODO: Make an __init__ method that take the actual HTTP header fields
     """
     def __init__(self, request):
         """
+        This __init__ receives a request and makes an HttpRequest object
+        out of it
+
         :param request: http request
         :type request: bytes
         """
