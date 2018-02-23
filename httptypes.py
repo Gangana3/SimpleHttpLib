@@ -319,6 +319,8 @@ class HttpServer(object):
                     # Clear the console
                     os.system('cls' if os.name == 'nt' else 'clear')
         finally:
+            if self.vebose:
+                print('Shutting Down!')
             server_socket.close()   # shutdown server
 
     def __serve_client(self, connection):
