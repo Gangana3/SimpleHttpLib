@@ -55,7 +55,7 @@ DEFAULT_ERRORS = {
 """
 }
 DEFAULT_BUFFER_SIZE = 1024      # Size of the buffer to receive from client
-DEFAULT_READING_SIZE = 1024     # Size to read from resource at once (in bytes)
+DEFAULT_PROCESSING_SIZE = 1024  # Bytes that will be processed together
 
 
 class HttpRequest(object):
@@ -199,7 +199,8 @@ class HttpResponse(object):
             self.content_length = path.getsize(http_request.resource)
 
             # Whether the response is big or not
-            self._is_big_response = self.content_length > DEFAULT_READING_SIZE
+            self._is_big_response = self.content_length > \
+                                    DEFAULT_PROCESSING_SIZE
 
             # Take care of big files more efficiently
             if not self._is_big_response:
@@ -268,8 +269,8 @@ class HttpResponse(object):
         """
         file_length = path.getsize(filename)
         with open(filename, 'rb') as resource:
-            for i in range(file_length // DEFAULT_READING_SIZE):
-                yield resource.read(DEFAULT_READING_SIZE)
+            for i in range(file_length // DEFAULT_PROCESSING_SIZE):
+                yield resource.read(DEFAULT_PROCESSING_SIZE)
             yield resource.read()
 
     @staticmethod
