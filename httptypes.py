@@ -153,6 +153,7 @@ class HttpResponse(object):
         '.jpeg': b'image/jpeg',
         '.png': b'image/png',
         '.gif': b'image/gif',
+        '.ico': b'image/x-icon',
 
         # Text
         '.css': b'text/css',
@@ -199,7 +200,7 @@ class HttpResponse(object):
     def __repr__(self):
         # First response line
         response = b' '.join((self.version,
-                              bytes(str(self.code), encoding='utf-8'),
+                              str(self.code).encode('utf-8'),
                               self.code_phrase))
         return response.decode('utf-8')
 
@@ -209,7 +210,7 @@ class HttpResponse(object):
         response = first_line + b'\r\n'
         # Add header fields
         response += b'Content-Length: ' + \
-                    bytes(str(self.content_length), encoding='utf-8') + b'\r\n'
+                    str(self.content_length).encode('utf-8') + b'\r\n'
         response += b'Content-Type: ' + self.content_type + b'\r\n'
         # Add data
         response += b'\r\n' + self.data
@@ -318,9 +319,11 @@ class HttpServer(object):
                 if self.verbose:
                     # Clear the console
                     os.system('cls' if os.name == 'nt' else 'clear')
+        except KeyboardInterrupt:
+            pass
         finally:
             if self.verbose:
-                print('Shutting Down!')
+                print('\rShutting Down!')
             server_socket.close()   # shutdown server
 
     def __serve_client(self, connection):
@@ -339,13 +342,12 @@ class HttpServer(object):
 
             if self.verbose:
                 print(
-                    """
-___________________________________________________
+                    """___________________________________________________
 
 Request: {}
 Response: {}
-____________________________________________________
-                    """.format(request.__repr__(), response.__repr__())
+___________________________________________________""".format(
+                        request.__repr__(), response.__repr__())
                 )
 
             # Send the response
@@ -353,4 +355,3 @@ ____________________________________________________
             received_data = connection.recv(DEFAULT_BUFFER_SIZE)
             # If the received_data is an empty string, it means that the client
             # disconnected
-
