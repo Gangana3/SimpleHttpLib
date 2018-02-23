@@ -54,7 +54,8 @@ DEFAULT_ERRORS = {
 </html>
 """
 }
-DEFAULT_BUFFER_SIZE = 1024
+DEFAULT_BUFFER_SIZE = 1024      # Size of the buffer to receive from client
+DEFAULT_READING_SIZE = 1024     # Size to read from resource at once (in bytes)
 
 
 class HttpRequest(object):
@@ -196,14 +197,27 @@ class HttpResponse(object):
                 decode('utf-8')
             self.content_type = HttpResponse.content_types[resource_extension]
             self.content_length = path.getsize(http_request.resource)
-            with open(http_request.resource, 'rb') as resource_data:
-                self.data = resource_data.read()
+
+            # Whether the response is big or not
+            self._is_big_response = self.content_length > DEFAULT_READING_SIZE
+
+            # Take care of big files more efficiently
+            if not self._is_big_response:
+                # Data for small files
+                with open(http_request.resource, 'rb') as resource_data:
+                    self.data = resource_data.read()
+            else:
+                # Data for big files
+                self.data = HttpResponse.__iter_resource_data(
+                    http_request.resource)
 
     def __repr__(self):
         # First response line
         response = b' '.join((self.version,
                               str(self.code).encode('utf-8'),
-                              self.code_phrase))
+                              self.code_phrase,
+                              str(self.content_length).encode('utf-8'),
+                              str(self._is_big_response).encode('utf-8')))
         return response.decode('utf-8')
 
     def __bytes__(self):
@@ -214,8 +228,15 @@ class HttpResponse(object):
         response += b'Content-Length: ' + \
                     str(self.content_length).encode('utf-8') + b'\r\n'
         response += b'Content-Type: ' + self.content_type + b'\r\n'
+
         # Add data
-        response += b'\r\n' + self.data
+        response += b'\r\n'
+        if not self._is_big_response:
+            # For small files
+            response += self.data
+        else:
+            # For big files
+            response += next(self.data)    # get the first part of the data
         return response
 
     def send(self, connection_socket):
@@ -224,8 +245,28 @@ class HttpResponse(object):
         :param connection_socket:
         :return: None
         """
-        print(bytes(self))
-        connection_socket.send(bytes(self))
+        if not self._is_big_response:
+            # For small files
+            connection_socket.send(bytes(self))
+        else:
+            # For big files
+            connection_socket.send(bytes(self))
+            for part in self.data:
+                connection_socket.send(part)
+
+    @staticmethod
+    def __iter_resource_data(filename):
+        """
+        Returns a view object that contains parts of the data
+        :param filename: name of the file/resource
+        :return: view object
+        :rtype: generator
+        """
+        file_length = path.getsize(filename)
+        with open(filename, 'rb') as resource:
+            for i in range(file_length // DEFAULT_READING_SIZE):
+                yield resource.read(DEFAULT_READING_SIZE)
+            yield resource.read()
 
     @staticmethod
     def __get_code(http_request, forbidden_resources=None):
@@ -356,3 +397,12 @@ ___________________________________________________""".format(
             received_data = connection.recv(DEFAULT_BUFFER_SIZE)
             # If the received_data is an empty string, it means that the client
             # disconnected
+
+
+def main():
+    server = HttpServer('127.0.0.1', 1235)
+    server.start()
+
+
+if __name__ == '__main__':
+    main()
