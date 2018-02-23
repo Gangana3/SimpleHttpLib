@@ -7,6 +7,7 @@ Overview: This code contains a few types that will be used on working
 """
 
 import re
+import os
 import socket
 from os import path
 
@@ -281,15 +282,42 @@ class HttpServer(object):
         server_socket.bind((self.ip, self.port))
         server_socket.listen(1)
 
+        if self.verbose:
+            print("""
+=======================================================
+
+                    Server started!
+                    --------------
+    port: {0}
+    ip address: {1}
+    
+            Open the browser and type in the 
+            address bar:
+            {1}:{0}
+            in order to view the website.
+            
+=======================================================
+            """.format(self.port, self.ip, self.ip))
+
         try:
             while True:
+                if self.verbose:
+                    print('Waiting for connection...')
+
                 # Wait for connection
                 connection, client_addr = server_socket.accept()
+
+                if self.verbose:
+                    print('Connection started with {}!'.format(client_addr[0]))
 
                 try:
                     self.__serve_client(connection)
                 finally:
                     connection.close()
+
+                if self.verbose:
+                    # Clear the console
+                    os.system('cls' if os.name == 'nt' else 'clear')
         finally:
             server_socket.close()   # shutdown server
 
@@ -305,8 +333,22 @@ class HttpServer(object):
         received_data = connection.recv(DEFAULT_BUFFER_SIZE)
         while received_data:
             request = HttpRequest(received_data)
-            print(request.__repr__())
             response = request.create_response(self.forbidden_resources)
+
+            if self.verbose:
+                print(
+                    """
+___________________________________________________
+
+Request: {}
+Response: {}
+____________________________________________________
+                    """.format(request.__repr__(), response.__repr__())
+                )
+
             # Send the response
             response.send(connection)
             received_data = connection.recv(DEFAULT_BUFFER_SIZE)
+            # If the received_data is an empty string, it means that the client
+            # disconnected
+
