@@ -56,7 +56,7 @@ DEFAULT_ERRORS = {
 }
 DEFAULT_BUFFER_SIZE = 1024      # Size of the buffer to receive from client
 DEFAULT_PROCESSING_SIZE = 1024  # Bytes that will be processed together
-
+HTTP_METHODS = (b'GET', b'POST')
 
 class HttpRequest(object):
     """
@@ -91,12 +91,15 @@ class HttpRequest(object):
             type_regex = re.compile(b'Content-Type:(.+)\r\n')
             data_regex = re.compile(b'\r\n\r\n(.+)')
 
-            # extract the data
-            data = data_regex.search(request).group(1)
+            # extract the data and header fields
+            data_result = data_regex.search(request)
             type_result = type_regex.search(request)
             length_result = length_regex.search(request)
+            data, content_length, content_type = None, None, None
+            if data_result:
+                data = data_result.group(1).strip()
             if type_result:
-                content_type = type_result.group(1).split()
+                content_type = type_result.group(1).strip()
             else:
                 content_type = b''
             if length_result:
@@ -136,6 +139,32 @@ class HttpRequest(object):
         :return: A response to the request
         """
         return HttpResponse(self, forbidden_resources)
+
+    @staticmethod
+    def get_requests(data):
+        """
+        Creates HttpRequest objects from the given data
+        :param data: Data that got from the socket. Must contain requests data
+                     only.
+        :type data: bytes
+        :return: returns HttpRequest objects
+        :rtype: list
+        TODO: Make it work efficiently with large post requests
+        """
+        method_indexes = []
+        # Find the method shows inside the data
+        for method in HTTP_METHODS:
+            method_regex = re.compile(method)
+            for method_show in method_regex.finditer(data):
+                method_indexes.append(method_show.start())
+
+        # Create requests
+        requests = []
+        for i in range(len(method_indexes) - 1):
+            requests.append(HttpRequest(data[method_indexes[i]:
+                                             method_indexes[i + 1]]))
+        requests.append(HttpRequest(data[method_indexes[-1]:]))
+        return requests
 
 
 class HttpResponse(object):
@@ -190,6 +219,9 @@ class HttpResponse(object):
             self.content_type = HttpResponse.content_types['.html']
             self.data = DEFAULT_ERRORS[self.code]
             self.content_length = len(self.data)
+            # Whether the response is big or not
+            self._is_big_response = self.content_length > \
+                DEFAULT_PROCESSING_SIZE
 
         # Take care of a valid request
         if self.code == 200:
@@ -200,7 +232,7 @@ class HttpResponse(object):
 
             # Whether the response is big or not
             self._is_big_response = self.content_length > \
-                                    DEFAULT_PROCESSING_SIZE
+                DEFAULT_PROCESSING_SIZE
 
             # Take care of big files more efficiently
             if not self._is_big_response:
@@ -216,9 +248,7 @@ class HttpResponse(object):
         # First response line
         response = b' '.join((self.version,
                               str(self.code).encode('utf-8'),
-                              self.code_phrase,
-                              str(self.content_length).encode('utf-8'),
-                              str(self._is_big_response).encode('utf-8')))
+                              self.code_phrase))
         return response.decode('utf-8')
 
     def __bytes__(self):
@@ -384,21 +414,34 @@ class HttpServer(object):
         # Start receiving requests
         received_data = connection.recv(DEFAULT_BUFFER_SIZE)
         while received_data:
-            request = HttpRequest(received_data)
-            response = request.create_response(self.forbidden_resources)
+            print(received_data)
+            requests = HttpRequest.get_requests(received_data)
+            responses = [HttpResponse(request) for request in requests]
 
             if self.verbose:
-                print(
-                    """___________________________________________________
-
+                for i in range(len(requests)):
+                    print(
+                        """___________________________________________________
+    
 Request: {}
 Response: {}
 ___________________________________________________""".format(
-                        request.__repr__(), response.__repr__())
-                )
+                            requests[i].__repr__(), responses[i].__repr__())
+                    )
 
-            # Send the response
-            response.send(connection)
+            # Send the responses
+            for response in responses:
+                response.send(connection)
+
             received_data = connection.recv(DEFAULT_BUFFER_SIZE)
             # If the received_data is an empty string, it means that the client
             # disconnected
+
+
+def main():
+    server = HttpServer('127.0.0.1', 8821)
+    server.start()
+
+
+if __name__ == '__main__':
+    main()
