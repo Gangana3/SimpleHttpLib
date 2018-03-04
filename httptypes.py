@@ -58,6 +58,7 @@ DEFAULT_BUFFER_SIZE = 1024      # Size of the buffer to receive from client
 DEFAULT_PROCESSING_SIZE = 1024  # Bytes that will be processed together
 HTTP_METHODS = (b'GET', b'POST')
 
+
 class HttpRequest(object):
     """
     This class represents an HTTP request
