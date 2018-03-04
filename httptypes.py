@@ -56,7 +56,7 @@ DEFAULT_ERRORS = {
 }
 DEFAULT_BUFFER_SIZE = 1024      # Size of the buffer to receive from client
 DEFAULT_PROCESSING_SIZE = 1024  # Bytes that will be processed together
-HTTP_METHODS = (b'GET', b'POST')
+HTTP_METHODS = (b'GET', b'POST')   # supported HTTP request methods
 
 
 class HttpRequest(object):
@@ -415,7 +415,6 @@ class HttpServer(object):
         # Start receiving requests
         received_data = connection.recv(DEFAULT_BUFFER_SIZE)
         while received_data:
-            print(received_data)
             requests = HttpRequest.get_requests(received_data)
             responses = [HttpResponse(request) for request in requests]
 
