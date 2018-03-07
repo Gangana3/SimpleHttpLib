@@ -7,9 +7,9 @@ Overview: This code contains a few types that will be used on working
 """
 
 import re
-import os
 import socket
 from os import path
+from select import select
 
 # constants
 ENCODING = 'utf-8'
@@ -75,9 +75,18 @@ class HttpRequest(object):
         :param request: http request
         :type request: bytes
         """
+        self.is_valid = True    # whether the request is valid or not
+
         # extract first line
         first_lf_index = request.find(b'\r\n')
         first_line = request[0: first_lf_index].split(b' ')
+
+        if len(first_line) != 3:
+            # In case first line of the request is invalid
+            self.is_valid = False
+            return
+
+
         self.method = first_line[0]      # Request method: GET, POST etc...
         self.resource = first_line[1]    # Requested resource such as index.html
         self.version = first_line[2]     # HTTP version
@@ -143,6 +152,14 @@ class HttpRequest(object):
         :rtype: HttpResponse
         :return: A response to the request
         """
+        # check if response is valid
+        if not self.is_valid:
+            # assign the fields
+            self.resource = b'/'
+            self.content_length = 0
+            self.version = b'HTTP/1.1'
+            self.method = b'GET'
+
         return HttpResponse(self, forbidden_resources=forbidden_resources)
 
     @staticmethod
@@ -323,6 +340,9 @@ class HttpResponse(object):
         :type http_request: HttpRequest
         :return: matching status code for the given request
         """
+        if not http_request.is_valid:
+            return 400  # Bad Request
+
         if path.isfile(http_request.resource):
             # Check if resource path is harmful or not
             if b'..' in http_request.resource:
@@ -367,10 +387,23 @@ class HttpServer(object):
         runs the server
         :return:
         """
+        if self.verbose:
+            print('Starting Server...')
+
+        # Start serving clients
+        self.__serve_clients()
+
+    def __serve_clients(self):
+        """
+        This method serves clients for they need.
+        This method makes use of select() method in order to serve a few
+        clients simontaniously
+        :return: None
+        """
         # Create a tcp socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.ip, self.port))
-        server_socket.listen(0)
+        server_socket.listen(10)
 
         if self.verbose:
             print("""
@@ -380,72 +413,63 @@ class HttpServer(object):
                     --------------
     port: {0}
     ip address: {1}
-    
+
             Open the browser and type in the 
             address bar:
             {1}:{0}
             in order to view the website.
-            
+
 =======================================================
-            """.format(self.port, self.ip, self.ip))
+                    """.format(self.port, self.ip, self.ip))
+
+        client_sockets = []
+        pending_responses = []  # list of tuples contains (socket, response)
 
         try:
             while True:
-                if self.verbose:
-                    print('Waiting for connection...')
+                # Filter the sockets that the server can communicate with
+                rlist, wlist, xlist = select([server_socket] + client_sockets,
+                                             client_sockets, [])
 
-                # Wait for connection
-                connection, client_addr = server_socket.accept()
+                # Read requests
+                for _socket in rlist:
+                    if _socket is server_socket:
+                        # In case a new client wants to create connection
+                        client_sockets.append(server_socket.accept()[0])
+                    else:
+                        request_data = _socket.recv(DEFAULT_BUFFER_SIZE)
+                        if request_data:
+                            request = HttpRequest(request_data)
+                            response = request.create_response()
 
-                if self.verbose:
-                    print('Connection started with {}!'.format(client_addr[0]))
+                            if self.verbose:
+                                print(
+                                    """
+______________________________________________________________
 
-                try:
-                    # Set timeout for the current connection
-                    connection.settimeout(DEFAULT_TIMEOUT)
+request: {}
+response: {}
+______________________________________________________________
+                                    """.format(repr(request), repr(response)))
 
-                    # Serve the current client
-                    self.__serve_client(connection)
-                finally:
-                    connection.close()
+                            pending_responses.append((_socket, response))
+                        else:
+                            # In case socket received empty data
+                            client_sockets.remove(_socket)
+                            _socket.close()
 
-                if self.verbose:
-                    # Clear the console
-                    os.system('cls' if os.name == 'nt' else 'clear')
+                # Send responses
+                for response in pending_responses:
+                    response_dest = response[0]  # Response destination (socket)
+                    response_obj = response[1]   # The HttpResponse object
+                    if response_dest in wlist:
+                        # In case the server can write to the socket
+                        response_obj.send(response_dest)
+                        pending_responses.remove(response)
+
         except KeyboardInterrupt:
-            pass
+            print('\rShutting Down!')
         finally:
-            if self.verbose:
-                print('\rShutting Down!')
-            server_socket.close()   # shutdown server
-
-    def __serve_client(self, connection):
-        """
-        This method serves ONE client for what he needs
-        :param connection: connection object
-        :type connection: socket.socket
-        :return: None
-        """
-        # Start receiving requests
-        received_data = connection.recv(DEFAULT_BUFFER_SIZE)
-        while received_data:
-            request = HttpRequest(received_data)
-            response = request.create_response(self.forbidden_resources)
-
-            if self.verbose:
-                print("""___________________________________________________
-Request: {}
-Response: {}
-___________________________________________________""".format(
-                    request.__repr__(), response.__repr__()))
-
-            # Send the response
-            response.send(connection)
-
-            # If received data is empty, it means that the client has
-            # disconnected
-            try:
-                received_data = connection.recv(
-                    DEFAULT_BUFFER_SIZE)
-            except socket.timeout:
-                received_data = b''
+            server_socket.close()
+            for _socket in client_sockets:
+                _socket.close()
