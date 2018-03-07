@@ -12,6 +12,7 @@ import socket
 from os import path
 
 # constants
+ENCODING = 'utf-8'
 ROOT_DIR = b'webroot'
 DEFAULT_ERRORS = {
     400: b"""
@@ -76,9 +77,9 @@ class HttpRequest(object):
         # extract first line
         first_lf_index = request.find(b'\r\n')
         first_line = request[0: first_lf_index].split(b' ')
-        self.method = first_line[0]     # Request method: GET, POST etc...
-        self.resource = first_line[1]   # Requested resource such as index.html
-        self.version = first_line[2]    # HTTP version
+        self.method = first_line[0]      # Request method: GET, POST etc...
+        self.resource = first_line[1]    # Requested resource such as index.html
+        self.version = first_line[2]     # HTTP version
 
         # Home page
         if self.resource == b'/':
@@ -115,19 +116,21 @@ class HttpRequest(object):
 
     def __repr__(self):
         request = b' '.join((self.method, self.resource, self.version))
-        return request.decode('utf-8')
+        return request.decode(ENCODING)
 
     def __bytes__(self):
         first_line = '{} {} {}'.format(self.method, self.resource, self.version)
-        request = first_line + '\r\n'
+        request = first_line.encode(ENCODING) + b'\r\n'
         if self.method == b'POST':
+
             # add headers
             request += b'Content-Length: ' + \
-                       bytes(str(self.content_length), encoding='utf-8') + \
+                       bytes(str(self.content_length), encoding=ENCODING) + \
                        b'\r\n'
             request += b'Content-Type: ' + self.content_type + b'\r\n'
+
+            # Add data
             request += b'\r\n'
-            # add data
             request += self.data
         return request
 
@@ -213,6 +216,7 @@ class HttpResponse(object):
         self.code = HttpResponse.__get_code(http_request, forbidden_resources)
         self.code_phrase = HttpResponse.code_phrases[self.code]
         self.version = http_request.version
+        self.connection = b'keep-alive'     # Type of the connection
 
         # Take care of the request errors
         if self.code != 200 and self.code != 300:
@@ -227,7 +231,7 @@ class HttpResponse(object):
         # Take care of a valid request
         if self.code == 200:
             resource_extension = path.splitext(http_request.resource)[1].\
-                decode('utf-8')
+                decode(ENCODING)
             self.content_type = HttpResponse.content_types[resource_extension]
             self.content_length = path.getsize(http_request.resource)
 
@@ -248,18 +252,20 @@ class HttpResponse(object):
     def __repr__(self):
         # First response line
         response = b' '.join((self.version,
-                              str(self.code).encode('utf-8'),
+                              str(self.code).encode(ENCODING),
                               self.code_phrase))
-        return response.decode('utf-8')
+        return response.decode(ENCODING)
 
     def __bytes__(self):
-        first_line = b' '.join((self.version, str(self.code).encode('utf-8'),
+        first_line = b' '.join((self.version, str(self.code).encode(ENCODING),
                                 self.code_phrase))
         response = first_line + b'\r\n'
+
         # Add header fields
         response += b'Content-Length: ' + \
-                    str(self.content_length).encode('utf-8') + b'\r\n'
+                    str(self.content_length).encode(ENCODING) + b'\r\n'
         response += b'Content-Type: ' + self.content_type + b'\r\n'
+        response += b'Connection: ' + self.connection + b'\r\n'
 
         # Add data
         response += b'\r\n'
@@ -313,7 +319,6 @@ class HttpResponse(object):
         :return: matching status code for the given request
         """
         if path.isfile(http_request.resource):
-            # in case requested resource exists
             # Check if resource path is harmful or not
             if b'..' in http_request.resource:
                 return 403  # Forbidden
@@ -360,7 +365,7 @@ class HttpServer(object):
         # Create a tcp socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.ip, self.port))
-        server_socket.listen(1)
+        server_socket.listen(0)
 
         if self.verbose:
             print("""
@@ -404,44 +409,3 @@ class HttpServer(object):
             if self.verbose:
                 print('\rShutting Down!')
             server_socket.close()   # shutdown server
-
-    def __serve_client(self, connection):
-        """
-        This method serves ONE client for what he needs
-        :param connection: connection object
-        :type connection: socket.socket
-        :return: None
-        """
-        # Start receiving requests
-        received_data = connection.recv(DEFAULT_BUFFER_SIZE)
-        while received_data:
-            requests = HttpRequest.get_requests(received_data)
-            responses = [HttpResponse(request) for request in requests]
-
-            if self.verbose:
-                for i in range(len(requests)):
-                    print(
-                        """___________________________________________________
-    
-Request: {}
-Response: {}
-___________________________________________________""".format(
-                            requests[i].__repr__(), responses[i].__repr__())
-                    )
-
-            # Send the responses
-            for response in responses:
-                response.send(connection)
-
-            received_data = connection.recv(DEFAULT_BUFFER_SIZE)
-            # If the received_data is an empty string, it means that the client
-            # disconnected
-
-
-def main():
-    server = HttpServer('127.0.0.1', 8821)
-    server.start()
-
-
-if __name__ == '__main__':
-    main()
