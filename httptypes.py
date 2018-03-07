@@ -14,6 +14,7 @@ from os import path
 # constants
 ENCODING = 'utf-8'
 ROOT_DIR = b'webroot'
+DEFAULT_TIMEOUT = 5             # Timeout to close connection with the client
 DEFAULT_ERRORS = {
     400: b"""
     <html>
@@ -142,7 +143,7 @@ class HttpRequest(object):
         :rtype: HttpResponse
         :return: A response to the request
         """
-        return HttpResponse(self, forbidden_resources)
+        return HttpResponse(self, forbidden_resources=forbidden_resources)
 
     @staticmethod
     def get_requests(data):
@@ -202,17 +203,19 @@ class HttpResponse(object):
         '.js': b'application/javascript',
     }
 
-    def __init__(self, http_request, forbidden_resources=None):
+    def __init__(self, http_request, timeout=DEFAULT_TIMEOUT,
+                 forbidden_resources=None):
         """
         This ctor forms an Http Response object using the http request
         :param http_request: HttpRequest object
         :type http_request: HttpRequest
         :param forbidden_resources: Resources that the user is not supposed
             to have access to.
-        TODO: Make it work better with big files
+        :param timeout: Timeout to close connection with client (in seconds).
         TODO: Make it work with code 300
         TODO: Make it work with custom pages to each error
         """
+        self.timeout = timeout
         self.code = HttpResponse.__get_code(http_request, forbidden_resources)
         self.code_phrase = HttpResponse.code_phrases[self.code]
         self.version = http_request.version
@@ -265,6 +268,8 @@ class HttpResponse(object):
         response += b'Content-Length: ' + \
                     str(self.content_length).encode(ENCODING) + b'\r\n'
         response += b'Content-Type: ' + self.content_type + b'\r\n'
+        response += b'Keep-Alive: timeout=' + str(self.timeout).encode(
+            ENCODING) + b'\r\n'
         response += b'Connection: ' + self.connection + b'\r\n'
 
         # Add data
@@ -396,6 +401,10 @@ class HttpServer(object):
                     print('Connection started with {}!'.format(client_addr[0]))
 
                 try:
+                    # Set timeout for the current connection
+                    connection.settimeout(DEFAULT_TIMEOUT)
+
+                    # Serve the current client
                     self.__serve_client(connection)
                 finally:
                     connection.close()
@@ -409,3 +418,34 @@ class HttpServer(object):
             if self.verbose:
                 print('\rShutting Down!')
             server_socket.close()   # shutdown server
+
+    def __serve_client(self, connection):
+        """
+        This method serves ONE client for what he needs
+        :param connection: connection object
+        :type connection: socket.socket
+        :return: None
+        """
+        # Start receiving requests
+        received_data = connection.recv(DEFAULT_BUFFER_SIZE)
+        while received_data:
+            request = HttpRequest(received_data)
+            response = request.create_response(self.forbidden_resources)
+
+            if self.verbose:
+                print("""___________________________________________________
+Request: {}
+Response: {}
+___________________________________________________""".format(
+                    request.__repr__(), response.__repr__()))
+
+            # Send the response
+            response.send(connection)
+
+            # If received data is empty, it means that the client has
+            # disconnected
+            try:
+                received_data = connection.recv(
+                    DEFAULT_BUFFER_SIZE)
+            except socket.timeout:
+                received_data = b''
