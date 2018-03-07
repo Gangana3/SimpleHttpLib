@@ -86,7 +86,6 @@ class HttpRequest(object):
             self.is_valid = False
             return
 
-
         self.method = first_line[0]      # Request method: GET, POST etc...
         self.resource = first_line[1]    # Requested resource such as index.html
         self.version = first_line[2]     # HTTP version
@@ -161,32 +160,6 @@ class HttpRequest(object):
             self.method = b'GET'
 
         return HttpResponse(self, forbidden_resources=forbidden_resources)
-
-    @staticmethod
-    def get_requests(data):
-        """
-        Creates HttpRequest objects from the given data
-        :param data: Data that got from the socket. Must contain requests data
-                     only.
-        :type data: bytes
-        :return: returns HttpRequest objects
-        :rtype: list
-        TODO: Make it work efficiently with large post requests
-        """
-        method_indexes = []
-        # Find the method shows inside the data
-        for method in HTTP_METHODS:
-            method_regex = re.compile(method)
-            for method_show in method_regex.finditer(data):
-                method_indexes.append(method_show.start())
-
-        # Create requests
-        requests = []
-        for i in range(len(method_indexes) - 1):
-            requests.append(HttpRequest(data[method_indexes[i]:
-                                             method_indexes[i + 1]]))
-        requests.append(HttpRequest(data[method_indexes[-1]:]))
-        return requests
 
 
 class HttpResponse(object):
