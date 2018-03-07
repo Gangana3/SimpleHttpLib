@@ -362,9 +362,9 @@ class HttpServer(object):
         self.verbose = verbose
         self.forbidden_resources = forbidden_resources
 
-    def start(self):
+    def run(self):
         """
-        Starts the server
+        runs the server
         :return:
         """
         # Create a tcp socket
