@@ -213,3 +213,6 @@ $RECYCLE.BIN/
 
 # End of https://www.gitignore.io/api/linux,python,windows,pycharm,visualstudiocode
 
+# Custom Ignores
+try.py
+webroot/*
