@@ -278,18 +278,14 @@ class HttpResponse(object):
         :param connection_socket:
         :return: None
         """
-        try:
-            if not self._is_big_response:
-                # For small files
-                connection_socket.send(bytes(self))
-            else:
-                # For big files
-                connection_socket.send(bytes(self))
-                for part in self.data:
-                    connection_socket.send(part)
-        except BrokenPipeError:
-            # in case given connection is closed
-            pass
+        if not self._is_big_response:
+            # For small files
+            connection_socket.send(bytes(self))
+        else:
+            # For big files
+            connection_socket.send(bytes(self))
+            for part in self.data:
+                connection_socket.send(part)
 
     @staticmethod
     def __iter_resource_data(filename):
@@ -408,7 +404,9 @@ class HttpServer(object):
                 for _socket in rlist:
                     if _socket is server_socket:
                         # In case a new client wants to create connection
-                        client_sockets.append(server_socket.accept()[0])
+                        client_socket = server_socket.accept()[0]
+                        client_socket.settimeout(DEFAULT_TIMEOUT)
+                        client_sockets.append(client_socket)
                     else:
                         request_data = _socket.recv(DEFAULT_BUFFER_SIZE)
                         if request_data:
@@ -437,8 +435,12 @@ ______________________________________________________________
                     response_obj = response[1]   # The HttpResponse object
                     if response_dest in wlist:
                         # In case the server can write to the socket
-                        response_obj.send(response_dest)
-                        pending_responses.remove(response)
+                        try:
+                            response_obj.send(response_dest)
+                        except BrokenPipeError:
+                            pass
+                        finally:
+                            pending_responses.remove(response)
 
         except KeyboardInterrupt:
             print('\rShutting Down!')
